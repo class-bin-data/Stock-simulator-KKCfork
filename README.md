@@ -1,3 +1,9 @@
+<p align="right">
+  <a href="README_EN.md">
+    <img src="https://img.shields.io/badge/Language-English-blue?style=for-the-badge" alt="English README" />
+  </a>
+</p>
+
 # 股市模拟器
 
 一个纯娱乐、零压力的 A 股模拟炒股平台。所有数据均在浏览器本地生成与存储，不连接任何真实行情接口，用户可在无资金风险的环境中学习股票交易规则、体验市场波动并测试自己的交易策略。
@@ -10,7 +16,8 @@
   <a href="https://www.bilibili.com/video/BV1sWNwzVEek/" target="_blank">
     <img src="./images/cover.jpg" width="600" alt="全新股票模拟器演示视频">
   </a>
-  <p>🎬 <b><a href="https://www.bilibili.com/video/BV1sWNwzVEek/" target="_blank">点击此处前往Bilibili观看完整演示视频</a></b></p>
+  <p>📺 <b><a href="https://www.bilibili.com/video/BV1sWNwzVEek/" target="_blank">点击此处在 Bilibili 上观看完整演示视频。</a></b></p>
+  <p>▶️ <b><a href="https://youtu.be/SESTTuLqTi4?si=GlUPLyUWA1FDomzB" target="_blank">点击此处在 YouTube 上观看完整的演示视频。</a></b></p>
 </div>
 
 ---
