@@ -1955,6 +1955,287 @@ body.festival-theme {
     font-size: 14px;
 }
 
+/* ==================== 扩展玩法：新闻 + 贷款 ==================== */
+
+/* 开局设置 - 扩展玩法选项 */
+.loan-options {
+    display: block;
+    margin: 8px 0 4px;
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+.news-prob-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.news-prob-row span {
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+.news-prob-row select {
+    flex: 1;
+    padding: 6px 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+}
+.loan-option-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+.loan-option-row span {
+    color: var(--text-secondary);
+    font-size: 13px;
+    min-width: 90px;
+}
+.loan-option-row input {
+    width: 70px;
+    padding: 6px 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+}
+
+/* 顶部 - 世界按钮 */
+#world-btn {
+    position: relative;
+}
+.world-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    line-height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #ff4d4f;
+    color: #fff;
+    font-size: 11px;
+    font-weight: bold;
+    text-align: center;
+}
+
+/* 世界页面 */
+.world-container {
+    max-width: 860px;
+    margin: 0 auto;
+}
+.world-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+.world-tab {
+    flex: 1;
+    max-width: 220px;
+    padding: 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.world-tab.active {
+    background: linear-gradient(135deg, var(--primary-color), #7c3aed);
+    color: #fff;
+    border-color: transparent;
+}
+.world-panel {
+    display: none;
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+    padding-right: 6px;
+}
+.world-panel.active {
+    display: block;
+}
+.world-panel::-webkit-scrollbar {
+    width: 6px;
+}
+.world-panel::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+.world-sub-title {
+    margin: 16px 0 10px;
+    color: var(--text-primary);
+}
+
+/* 新闻卡片 */
+.world-news-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.news-card {
+    padding: 12px 14px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--primary-color);
+    border-radius: 8px;
+}
+.news-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.news-time {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+.news-card h4 {
+    color: var(--text-primary);
+    font-size: 15px;
+    margin-bottom: 4px;
+}
+.news-card p {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* 贷款概览 */
+.loan-overview {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+.loan-stat {
+    flex: 1;
+    padding: 10px;
+    text-align: center;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+.loan-stat span {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+.loan-stat b {
+    color: var(--primary-color);
+    font-size: 16px;
+}
+
+/* 银行卡片 */
+.loan-banks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.loan-bank-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+.loan-bank-card.bankrupt {
+    opacity: 0.6;
+}
+.loan-bank-card h4 {
+    color: var(--text-primary);
+    font-size: 14px;
+}
+.loan-bank-card h4 small {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: normal;
+}
+.loan-bank-card p {
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin-top: 3px;
+}
+.bankrupt-badge {
+    color: #e74c3c;
+    font-size: 13px;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+/* 我的贷款 */
+.loan-my-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.loan-item {
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+.loan-item.overdue {
+    border-color: #e74c3c;
+    background: rgba(231,76,60,0.08);
+}
+.loan-item-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+.loan-item h4 {
+    color: var(--text-primary);
+    font-size: 14px;
+}
+.loan-item h4 small {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: normal;
+}
+.loan-item p {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.6;
+}
+.loan-due {
+    color: var(--text-primary);
+}
+.loan-status {
+    font-size: 12px;
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+.loan-status.active {
+    background: rgba(82,196,26,0.2);
+    color: #52c41a;
+}
+.loan-status.overdue {
+    background: rgba(231,76,60,0.2);
+    color: #e74c3c;
+}
+
+/* 贷款申请弹窗 */
+.loan-apply-bank {
+    color: var(--text-primary);
+    font-weight: bold;
+    margin-bottom: 6px;
+}
+.loan-apply-hint {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-bottom: 14px;
+}
+
 .debug-content .debug-section {
     margin-bottom: 25px;
     padding-bottom: 20px;

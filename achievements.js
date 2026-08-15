@@ -65,6 +65,10 @@ const AchievementSystem = {
         { id: 'news_trader', name: '消息派', desc: '在"利好消息"后买入并盈利', level: 'bronze', icon: '📰', condition: (stats) => stats.newsTrades >= 1 },
         { id: 'early_bird', name: '早起的鸟儿', desc: '在开盘前5分钟完成交易', level: 'bronze', icon: '🐦', condition: (stats) => stats.earlyTrades >= 1 },
         { id: 'night_owl', name: '夜猫子', desc: '在收盘前5分钟完成交易', level: 'bronze', icon: '🦉', condition: (stats) => stats.lateTrades >= 1 },
+        
+        // 贷款玩法成就（需在存档创建时启用贷款功能才会生效）
+        { id: 'deadbeat', name: '老赖', desc: '还款日未及时还债', level: 'silver', icon: '🧾', feature: 'loan', condition: (stats) => stats.missedPayment },
+        { id: 'debt_evaporated', name: '债务蒸发', desc: '持有某银行贷款负债，该银行股当日跌停并触发破产清算', level: 'legend', icon: '💸', feature: 'loan', condition: (stats) => stats.debtEvaporated },
     ],
 
     // 获取成就等级名称
@@ -89,10 +93,15 @@ const AchievementSystem = {
         return colors[level] || '#888';
     },
 
+    // 获取可见成就（按启用的玩法功能过滤，feature 为空的成就始终可见）
+    getVisibleAchievements(enabledFeatures = []) {
+        return this.achievements.filter(a => !a.feature || enabledFeatures.includes(a.feature));
+    },
+
     // 检查成就解锁
-    checkAchievements(stats, unlockedIds) {
+    checkAchievements(stats, unlockedIds, enabledFeatures = []) {
         const newAchievements = [];
-        this.achievements.forEach(ach => {
+        this.getVisibleAchievements(enabledFeatures).forEach(ach => {
             if (!unlockedIds.includes(ach.id) && ach.condition(stats)) {
                 newAchievements.push(ach);
             }

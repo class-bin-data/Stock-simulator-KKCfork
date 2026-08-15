@@ -126,6 +126,16 @@ class StockSimulator {
         this.skipMode = false;        // 是否正在加速跳过时间
         this.skipTicksRemaining = 0;  // 跳过剩余需要推进的tick数
         
+        // 扩展玩法（新闻 / 贷款）
+        this.newsEnabled = false;         // 是否启用新闻事件
+        this.newsProbability = 0.4;       // 新闻每日出现概率
+        this.loanEnabled = false;         // 是否启用贷款
+        this.loanConfig = null;           // 贷款配置（存档创建时设置）
+        this.bankruptBanks = new Set();   // 已破产银行（代码集合）
+        this.bankruptcyDays = 3;          // 破产条件：连续N日股价低于M元（默认3日）
+        this.bankruptcyPrice = 1;         // 破产条件：股价低于M元（默认1元）
+        this.loanApplyBankCode = null;    // 当前正在申请贷款的银行代码
+        
         // 图表缩放状态
         this.chartState = {
             scaleX: 1,        // X轴缩放比例
@@ -319,6 +329,33 @@ class StockSimulator {
             });
         });
 
+        // 扩展玩法设置（开局设置界面）
+        document.getElementById('news-enabled').addEventListener('change', (e) => {
+            const row = document.getElementById('news-probability').closest('.loan-options');
+            if (row) row.style.display = e.target.checked ? 'flex' : 'none';
+            this.updateBankruptcyOptionVisibility();
+        });
+        document.getElementById('loan-enabled').addEventListener('change', (e) => {
+            document.getElementById('loan-options').style.display = e.target.checked ? 'block' : 'none';
+            this.updateBankruptcyOptionVisibility();
+        });
+
+        // 世界页面标签切换
+        document.querySelectorAll('.world-tab').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                document.querySelectorAll('.world-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.world-panel').forEach(p => p.classList.remove('active'));
+                e.target.classList.add('active');
+                document.getElementById(`world-${e.target.dataset.worldTab}-panel`).classList.add('active');
+                if (e.target.dataset.worldTab === 'loan') this.renderLoans();
+                else if (e.target.dataset.worldTab === 'news') this.renderWorldNews();
+            });
+        });
+
+        // 贷款申请弹窗
+        document.getElementById('loan-apply-confirm').addEventListener('click', () => this.confirmLoan());
+        document.getElementById('loan-apply-cancel').addEventListener('click', () => this.hideLoanModal());
+
         // 导航
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -326,9 +363,11 @@ class StockSimulator {
                 document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
                 e.target.classList.add('active');
                 document.getElementById(`${e.target.dataset.page}-page`).classList.add('active');
+                this.currentTab = e.target.dataset.page;
                 if (e.target.dataset.page === 'portfolio') this.updatePortfolio();
                 if (e.target.dataset.page === 'trade') this.updateTradeAvailable();
                 if (e.target.dataset.page === 'profile') this.updateProfile();
+                if (e.target.dataset.page === 'world') this.openWorldPage();
             });
         });
 
@@ -1002,7 +1041,26 @@ class StockSimulator {
                 buyFee: parseFloat(document.getElementById('buy-fee').value) / 100,
                 sellFee: parseFloat(document.getElementById('sell-fee').value) / 100,
                 t0Mode: document.getElementById('t0-mode').checked,
-                tradeUnit: parseInt(document.querySelector('input[name="trade-unit"]:checked').value)
+                tradeUnit: parseInt(document.querySelector('input[name="trade-unit"]:checked').value),
+                // 扩展玩法（新闻 / 贷款）—— 默认关闭
+                newsEnabled: document.getElementById('news-enabled').checked,
+                newsProbability: parseFloat(document.getElementById('news-probability').value) || 0.4,
+                loanEnabled: document.getElementById('loan-enabled').checked,
+                loanConfig: {
+                    minInterest: parseFloat(document.getElementById('loan-min-interest').value) / 100 || 0.0005,
+                    maxInterest: parseFloat(document.getElementById('loan-max-interest').value) / 100 || 0.003,
+                    maxLoanRatio: parseFloat(document.getElementById('loan-ratio').value) / 100 || 0.5,
+                    dueDays: parseInt(document.getElementById('loan-due-days').value) || 30,
+                    graceDays: parseInt(document.getElementById('loan-grace-days').value) || 3,
+                    reminder: document.getElementById('loan-reminder').checked,
+                    forcedCollect: document.getElementById('loan-forced').checked,
+                    initialCredit: 100
+                },
+                // 破产机制参数（贷款或新闻玩法任一启用时才生效，原版游戏无破产）
+                bankruptcy: {
+                    days: parseInt(document.getElementById('bankruptcy-days').value) || 3,
+                    price: parseFloat(document.getElementById('bankruptcy-price').value) || 1
+                }
             },
             dayTrades: {},
             gameStats: {
@@ -1024,6 +1082,17 @@ class StockSimulator {
                     totalPnl: 0
                 },
                 records: []
+            },
+            // 扩展玩法状态
+            news: {
+                feed: [],        // 新闻列表
+                unread: 0        // 未读新闻数
+            },
+            loans: {
+                credit: 100,          // 信用分
+                loans: [],            // 贷款记录
+                bankruptBanks: [],    // 破产银行代码列表
+                lowPriceDays: {}      // 银行代码 → 连续股价低于M元的天数
             }
         };
 
@@ -1114,6 +1183,45 @@ class StockSimulator {
                 this.autoTrade.interval = setInterval(() => this.checkAutoTradeCondition(), this.refreshRate);
             }
         }
+        
+        // 扩展玩法兼容（旧存档默认关闭，不影响原有存档）
+        if (!this.currentSave.settings) this.currentSave.settings = {};
+        if (this.currentSave.settings.newsEnabled === undefined) this.currentSave.settings.newsEnabled = false;
+        if (this.currentSave.settings.newsProbability === undefined) this.currentSave.settings.newsProbability = 0.4;
+        if (this.currentSave.settings.loanEnabled === undefined) this.currentSave.settings.loanEnabled = false;
+        if (!this.currentSave.settings.loanConfig) {
+            this.currentSave.settings.loanConfig = {
+                minInterest: 0.0005, maxInterest: 0.003, maxLoanRatio: 0.5,
+                dueDays: 30, graceDays: 3, reminder: true, forcedCollect: true, initialCredit: 100
+            };
+        }
+        if (!this.currentSave.settings.bankruptcy) this.currentSave.settings.bankruptcy = { days: 3, price: 1 };
+        if (this.currentSave.settings.bankruptcy.days === undefined) this.currentSave.settings.bankruptcy.days = 3;
+        if (this.currentSave.settings.bankruptcy.price === undefined) this.currentSave.settings.bankruptcy.price = 1;
+        if (!this.currentSave.news) this.currentSave.news = { feed: [], unread: 0 };
+        if (!this.currentSave.loans) this.currentSave.loans = { credit: 100, loans: [], bankruptBanks: [], lowPriceDays: {} };
+        if (!this.currentSave.news.feed) this.currentSave.news.feed = [];
+        if (!this.currentSave.news.unread) this.currentSave.news.unread = 0;
+        if (!this.currentSave.loans.loans) this.currentSave.loans.loans = [];
+        if (!this.currentSave.loans.bankruptBanks) this.currentSave.loans.bankruptBanks = [];
+        if (!this.currentSave.loans.lowPriceDays) this.currentSave.loans.lowPriceDays = {};
+        
+        // 同步扩展玩法状态到实例
+        this.newsEnabled = !!this.currentSave.settings.newsEnabled;
+        this.newsProbability = this.currentSave.settings.newsProbability || 0.4;
+        this.loanEnabled = !!this.currentSave.settings.loanEnabled;
+        this.loanConfig = this.currentSave.settings.loanConfig;
+        this.bankruptBanks = new Set(this.currentSave.loans.bankruptBanks || []);
+        this.bankruptcyDays = this.currentSave.settings.bankruptcy.days || 3;
+        this.bankruptcyPrice = this.currentSave.settings.bankruptcy.price || 1;
+        this.loanApplyBankCode = null;
+        
+        // 显示/隐藏"世界"按钮
+        const worldBtn = document.getElementById('world-btn');
+        if (worldBtn) {
+            worldBtn.style.display = (this.newsEnabled || this.loanEnabled) ? '' : 'none';
+        }
+        this.updateWorldBadge();
         
         // 加载用户主题偏好（跨浏览器持久化）
         const savedTheme = this.currentUser.theme || 'dark';
@@ -1591,6 +1699,11 @@ class StockSimulator {
         }
         this.updatePortfolioRealTime();
         this.updateTradeAvailable();
+        // 跳过会推进多个交易日，结束后同步世界页面的新闻与贷款状态
+        if (this.currentTab === 'world') {
+            this.renderWorldNews();
+            this.renderLoans();
+        }
         this.showNotification('时间跳过完成');
     }
 
@@ -1598,6 +1711,474 @@ class StockSimulator {
     cancelSkip() {
         this.skipMode = false;
         this.skipTicksRemaining = 0;
+    }
+
+    // ==================== 扩展玩法：新闻 + 贷款 ====================
+
+    // 当前存档启用的玩法功能（用于成就过滤）
+    getEnabledFeatures() {
+        const features = [];
+        if (this.loanEnabled) features.push('loan');
+        return features;
+    }
+
+    // 简单的HTML转义，防止注入
+    esc(str) {
+        return String(str).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    // ---------- 新闻系统 ----------
+
+    // 新交易日：按概率尝试生成新闻
+    maybeGenerateNews() {
+        if (Math.random() >= this.newsProbability) return;
+        this.generateNews();
+    }
+
+    // 生成一条新闻并应用价格影响
+    generateNews() {
+        const news = NewsPool.generate(this.stockData, this.limitManager, this.bankruptBanks);
+        if (!news) return;
+        this.pushNews(news);
+        this.applyNewsEffect(news);
+    }
+
+    // 将新闻写入存档并更新未读角标
+    pushNews(news) {
+        const feed = this.currentSave.news.feed;
+        feed.unshift({
+            id: Crypto.uuid(),
+            day: this.tradingDayCount,
+            time: `${this.gameTime.hour.toString().padStart(2, '0')}:${this.gameTime.minute.toString().padStart(2, '0')}`,
+            type: news.type,
+            headline: news.headline,
+            body: news.body,
+            relatedCodes: news.relatedCodes || []
+        });
+        if (feed.length > 50) feed.pop();
+        this.currentSave.news.unread = (this.currentSave.news.unread || 0) + 1;
+        this.updateWorldBadge();
+        this.saveUsers();
+        // 世界页面打开时实时刷新新闻列表（跳过期间暂缓，结束时统一刷新）
+        if (this.currentTab === 'world' && this.newsEnabled && !this.skipMode) {
+            this.renderWorldNews();
+        }
+    }
+
+    // 应用新闻对相关股票的价格影响（限制在涨跌停范围内）
+    applyNewsEffect(news) {
+        if (!news.effect || !news.relatedCodes || !news.relatedCodes.length) return;
+        news.relatedCodes.forEach(code => {
+            const data = this.stockData.get(code);
+            if (!data) return;
+            const dir = news.effect.direction === 'random'
+                ? (Math.random() < 0.5 ? -1 : 1)
+                : (news.effect.direction === 'up' ? 1 : -1);
+            let newPrice = data.price * (1 + dir * news.effect.magnitude);
+            newPrice = this.limitManager.clampPrice(newPrice, data.prevClose);
+            newPrice = this.limitManager.roundToTick(newPrice);
+            data.price = newPrice;
+            data.high = Math.max(data.high, data.price);
+            data.low = Math.min(data.low, data.price);
+            const lastHistory = data.history[data.history.length - 1];
+            if (lastHistory) {
+                lastHistory.close = data.price;
+                lastHistory.high = Math.max(lastHistory.high, data.price);
+                lastHistory.low = Math.min(lastHistory.low, data.price);
+            }
+        });
+    }
+
+    // 更新"世界"按钮的未读角标
+    updateWorldBadge() {
+        const badge = document.getElementById('world-badge');
+        if (!badge) return;
+        const unread = (this.currentSave && this.currentSave.news) ? (this.currentSave.news.unread || 0) : 0;
+        if (this.newsEnabled && unread > 0) {
+            badge.textContent = unread > 9 ? '9+' : unread;
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    // 打开世界页面（导航切换到"世界"时调用）
+    openWorldPage() {
+        if (!this.currentSave) return;
+        if (this.currentSave.news) this.currentSave.news.unread = 0;
+        this.updateWorldBadge();
+        this.saveUsers();
+
+        // 根据启用的功能显示/隐藏标签
+        const newsTab = document.querySelector('.world-tab[data-world-tab="news"]');
+        const loanTab = document.querySelector('.world-tab[data-world-tab="loan"]');
+        if (newsTab) newsTab.style.display = this.newsEnabled ? '' : 'none';
+        if (loanTab) loanTab.style.display = this.loanEnabled ? '' : 'none';
+
+        // 默认激活第一个可见标签
+        const activeTab = this.loanEnabled && !this.newsEnabled ? 'loan' : 'news';
+        this.activateWorldTab(activeTab);
+        this.renderWorldNews();
+        this.renderLoans();
+    }
+
+    // 切换世界面板标签
+    activateWorldTab(tabName) {
+        document.querySelectorAll('.world-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.worldTab === tabName);
+        });
+        document.querySelectorAll('.world-panel').forEach(p => {
+            p.classList.toggle('active', p.id === `world-${tabName}-panel`);
+        });
+    }
+
+    // 渲染新闻列表
+    renderWorldNews() {
+        const el = document.getElementById('world-news-list');
+        if (!el) return;
+        const feed = (this.currentSave && this.currentSave.news) ? this.currentSave.news.feed : [];
+        if (!feed.length) {
+            el.innerHTML = '<p class="empty-tip">暂无新闻，等待市场消息...</p>';
+            return;
+        }
+        el.innerHTML = feed.map(n => `
+            <div class="news-card">
+                <div class="news-head">
+                    <span class="news-time">第${n.day}交易日 ${n.time}</span>
+                </div>
+                <h4>${this.esc(n.headline)}</h4>
+                <p>${this.esc(n.body)}</p>
+            </div>
+        `).join('');
+    }
+
+    // ---------- 贷款系统 ----------
+
+    // 可选银行：股票池中所有银行股
+    getLoanBanks() {
+        return StockPool.filter(s => s.industry === '银行');
+    }
+
+    // 计算总资产（现金 + 持仓市值）
+    getTotalAssets() {
+        if (!this.currentSave) return 0;
+        return this.currentSave.fund + this.calculateStockValue(this.currentSave);
+    }
+
+    // 计算总负债（未结清贷款本金 + 利息）
+    getTotalDebt() {
+        if (!this.currentSave) return 0;
+        return (this.currentSave.loans.loans || []).reduce((sum, l) => {
+            if (l.status === 'active' || l.status === 'overdue') {
+                return sum + l.principal + l.interestAccrued;
+            }
+            return sum;
+        }, 0);
+    }
+
+    // 某银行可贷上限 = 总资产 × 配比 × 信用系数
+    getBankMaxLoan(bank) {
+        const cfg = this.loanConfig || { maxLoanRatio: 0.5 };
+        const creditFactor = ((this.currentSave.loans.credit || 0) / 100);
+        return Math.floor(this.getTotalAssets() * cfg.maxLoanRatio * creditFactor);
+    }
+
+    // 某银行日利率（信用越高利率越低）
+    getBankRate(bank) {
+        const cfg = this.loanConfig || { minInterest: 0.0005, maxInterest: 0.003 };
+        const min = Math.min(cfg.minInterest, cfg.maxInterest);
+        const max = Math.max(cfg.minInterest, cfg.maxInterest);
+        const credit = ((this.currentSave.loans.credit || 0) / 100);
+        const base = min + Math.random() * (max - min);
+        return Math.max(0, base * (1.3 - credit * 0.3));
+    }
+
+    // 打开贷款申请弹窗
+    openLoanModal(bankCode) {
+        const bank = this.getLoanBanks().find(b => b.code === bankCode);
+        if (!bank) return;
+        this.loanApplyBankCode = bankCode;
+        const max = this.getBankMaxLoan(bank);
+        document.getElementById('loan-apply-bank').textContent = `向 ${bank.name}（${bankCode}）申请贷款`;
+        document.getElementById('loan-apply-max').textContent = `可贷上限：¥${this.formatMoney(max)}（总资产 × 配比 × 信用）`;
+        document.getElementById('loan-apply-amount').value = '';
+        document.getElementById('loan-apply-error').style.display = 'none';
+        document.getElementById('loan-apply-modal').classList.add('active');
+        setTimeout(() => document.getElementById('loan-apply-amount').focus(), 100);
+    }
+
+    hideLoanModal() {
+        document.getElementById('loan-apply-modal').classList.remove('active');
+        this.loanApplyBankCode = null;
+    }
+
+    // 确认贷款
+    confirmLoan() {
+        const amount = parseFloat(document.getElementById('loan-apply-amount').value);
+        if (!amount || amount <= 0) {
+            document.getElementById('loan-apply-error').textContent = '请输入有效的贷款金额';
+            document.getElementById('loan-apply-error').style.display = 'block';
+            return;
+        }
+        if (!this.loanApplyBankCode) return;
+        const ok = this.applyLoan(this.loanApplyBankCode, amount);
+        if (ok !== false) this.hideLoanModal();
+    }
+
+    // 申请贷款
+    applyLoan(bankCode, amount) {
+        if (!this.loanEnabled || !this.currentSave) return false;
+        const bank = this.getLoanBanks().find(b => b.code === bankCode);
+        if (!bank) { this.showNotification('无效的银行'); return false; }
+        if (this.bankruptBanks.has(bankCode)) { this.showNotification('该银行已破产，无法贷款'); return false; }
+        amount = Math.floor(Number(amount));
+        if (!amount || amount <= 0) { this.showNotification('请输入有效的贷款金额'); return false; }
+        const max = this.getBankMaxLoan(bank);
+        if (amount > max) {
+            this.showNotification(`超出可贷额度（最高 ¥${this.formatMoney(max)}）`);
+            return false;
+        }
+        const loan = {
+            id: Crypto.uuid(),
+            bankCode,
+            bankName: bank.name,
+            principal: amount,
+            dailyRate: this.getBankRate(bank),
+            daysLeft: this.loanConfig.dueDays || 30,
+            overdueDays: 0,
+            interestAccrued: 0,
+            status: 'active',
+            dayBorrowed: this.tradingDayCount
+        };
+        this.currentSave.loans.loans.push(loan);
+        this.currentSave.fund += amount;
+        this.saveUsers();
+        this.showNotification(`✅ 贷款成功！向${bank.name}借款 ¥${this.formatMoney(amount)}`);
+        this.renderLoans();
+        this.updateTradeAvailable();
+        this.updatePortfolio();
+        return true;
+    }
+
+    // 还款
+    repayLoan(loanId) {
+        if (!this.currentSave) return;
+        const loan = this.currentSave.loans.loans.find(l => l.id === loanId && (l.status === 'active' || l.status === 'overdue'));
+        if (!loan) { this.showNotification('贷款不存在或已结清'); return; }
+        const total = Math.ceil(loan.principal + loan.interestAccrued);
+        if (this.currentSave.fund < total) { this.showNotification(`资金不足，需要 ¥${this.formatMoney(total)}`); return; }
+        this.currentSave.fund -= total;
+        loan.status = 'repaid';
+        loan.repaidDay = this.tradingDayCount;
+        // 按时还款信用 +1
+        if (loan.overdueDays === 0) {
+            this.currentSave.loans.credit = Math.min(100, (this.currentSave.loans.credit || 0) + 1);
+        }
+        this.saveUsers();
+        this.showNotification(`✅ 已向${loan.bankName}还款 ¥${this.formatMoney(total)}`);
+        this.renderLoans();
+        this.updateTradeAvailable();
+        this.updatePortfolio();
+    }
+
+    // 渲染贷款面板
+    renderLoans() {
+        if (!this.loanEnabled || !this.currentSave) return;
+        const loans = this.currentSave.loans;
+        document.getElementById('loan-credit').textContent = loans.credit;
+        document.getElementById('loan-assets').textContent = '¥' + this.formatMoney(this.getTotalAssets());
+        document.getElementById('loan-total-debt').textContent = '¥' + this.formatMoney(this.getTotalDebt());
+
+        // 可选银行列表
+        const banksEl = document.getElementById('loan-banks-list');
+        if (banksEl) {
+            const banks = this.getLoanBanks();
+            if (!banks.length) {
+                banksEl.innerHTML = '<p class="empty-tip">股票池中没有可用银行</p>';
+            } else {
+                banksEl.innerHTML = banks.map(bank => {
+                    const bankrupt = this.bankruptBanks.has(bank.code);
+                    const maxLoan = bankrupt ? 0 : this.getBankMaxLoan(bank);
+                    const rate = bankrupt ? 0 : this.getBankRate(bank);
+                    return `
+                        <div class="loan-bank-card ${bankrupt ? 'bankrupt' : ''}">
+                            <div class="loan-bank-info">
+                                <h4>${this.esc(bank.name)} <small>${bank.code}</small></h4>
+                                <p>${bankrupt ? '该银行已破产清算，暂停贷款业务' : `日利率 ${(rate * 100).toFixed(2)}% · 可贷上限 ¥${this.formatMoney(maxLoan)}`}</p>
+                            </div>
+                            ${bankrupt
+                                ? '<span class="bankrupt-badge">🏚️ 破产</span>'
+                                : `<button class="btn-secondary btn-small" onclick="game.openLoanModal('${bank.code}')">贷款</button>`}
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        // 我的贷款
+        const myEl = document.getElementById('loan-my-list');
+        if (myEl) {
+            const myLoans = loans.loans.filter(l => l.status === 'active' || l.status === 'overdue');
+            if (!myLoans.length) {
+                myEl.innerHTML = '<p class="empty-tip">暂无未结清贷款</p>';
+            } else {
+                myEl.innerHTML = myLoans.map(l => {
+                    const total = Math.ceil(l.principal + l.interestAccrued);
+                    const overdue = l.status === 'overdue';
+                    return `
+                        <div class="loan-item ${overdue ? 'overdue' : ''}">
+                            <div class="loan-item-head">
+                                <h4>${this.esc(l.bankName)} <small>${l.bankCode}</small></h4>
+                                <span class="loan-status ${overdue ? 'overdue' : 'active'}">${overdue ? `逾期 ${l.overdueDays} 天` : `剩 ${l.daysLeft} 天`}</span>
+                            </div>
+                            <p>本金 ¥${this.formatMoney(l.principal)} · 利息 ¥${this.formatMoney(Math.round(l.interestAccrued))}</p>
+                            <p class="loan-due">待还 ¥${this.formatMoney(total)}</p>
+                            <button class="btn-primary btn-small" onclick="game.repayLoan('${l.id}')">还款</button>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+    }
+
+    // 每日贷款结算（每个新交易日调用）：计息 + 到期 + 逾期 + 强制扣款
+    processLoanDaily() {
+        if (!this.loanEnabled || !this.currentSave) return;
+        let missed = false;
+        const loans = this.currentSave.loans.loans;
+        loans.forEach(loan => {
+            if (loan.status !== 'active' && loan.status !== 'overdue') return;
+            // 每日计息
+            loan.interestAccrued = Math.round((loan.interestAccrued + loan.principal * loan.dailyRate) * 100) / 100;
+            if (loan.status === 'active') {
+                loan.daysLeft--;
+                if (loan.daysLeft <= 0) {
+                    loan.status = 'overdue';
+                    loan.overdueDays = 1;
+                    missed = true;
+                    if (this.loanConfig.reminder) {
+                        this.showNotification(`⏰ ${loan.bankName}贷款已到期，请尽快还款！`);
+                    }
+                }
+            } else if (loan.status === 'overdue') {
+                loan.overdueDays++;
+                // 超过宽限期后强制扣款/查封资产
+                if (this.loanConfig.forcedCollect && loan.overdueDays > this.loanConfig.graceDays) {
+                    this.forceCollect(loan);
+                }
+            }
+        });
+        if (missed) {
+            // 老赖成就：还款日未及时还债
+            this.currentSave.gameStats.missedPayment = true;
+            this.currentSave.loans.credit = Math.max(0, (this.currentSave.loans.credit || 0) - 10);
+            this.checkAchievements();
+        }
+        this.saveUsers();
+        if (this.currentTab === 'world' && this.loanEnabled) {
+            this.renderLoans();
+        }
+    }
+
+    // 强制扣款 / 查封资产
+    forceCollect(loan) {
+        const total = Math.ceil(loan.principal + loan.interestAccrued);
+        let collected = 0;
+
+        // 1. 优先从现金扣除
+        if (this.currentSave.fund > 0) {
+            const take = Math.min(this.currentSave.fund, total - collected);
+            this.currentSave.fund -= take;
+            collected += take;
+        }
+
+        // 2. 现金不足则查封资产（按市价强制卖出持仓）
+        if (collected < total) {
+            const entries = Object.entries(this.currentSave.holdings || {});
+            for (const [code, holding] of entries) {
+                if (collected >= total) break;
+                const data = this.stockData.get(code);
+                if (!data || !holding || holding.quantity <= 0) continue;
+                const sellable = Math.min(holding.quantity, Math.max(1, Math.ceil((total - collected) / data.price)));
+                const sellAmount = sellable * data.price;
+                const fee = sellAmount * (this.currentSave.settings.sellFee || 0.0013);
+                const net = sellAmount - fee;
+                const pnl = (data.price - holding.avgPrice) * sellable;
+                holding.quantity -= sellable;
+                if (holding.quantity <= 0) {
+                    delete this.currentSave.holdings[code];
+                } else {
+                    holding.totalCost = holding.avgPrice * holding.quantity;
+                }
+                this.currentSave.fund += net;
+                collected += net;
+                this.showNotification(`🏦 ${loan.bankName}强制查封了${data.name}持仓以抵债`);
+                this.recordTrade('sell', code, data, data.price, sellable, sellAmount, fee, pnl);
+                break; // 每次只查封一只股票，避免复杂循环
+            }
+        }
+
+        loan.status = 'collected';
+        this.showNotification(collected >= total
+            ? `🏦 ${loan.bankName}已强制结清逾期贷款`
+            : `🏦 ${loan.bankName}强制收回了部分债务`);
+        this.saveUsers();
+        this.updateTradeAvailable();
+        this.updatePortfolio();
+    }
+
+    // 银行破产清算判定（连续N日收盘价低于M元触发）
+    triggerBankruptcy(code, data) {
+        if (this.bankruptBanks.has(code)) return;
+        this.bankruptBanks.add(code);
+        if (!this.currentSave.loans.bankruptBanks.includes(code)) {
+            this.currentSave.loans.bankruptBanks.push(code);
+        }
+
+        // 核销该银行的未结清贷款 → 债务蒸发成就
+        let hadLoan = false;
+        this.currentSave.loans.loans.forEach(loan => {
+            if (loan.bankCode === code && (loan.status === 'active' || loan.status === 'overdue')) {
+                loan.status = 'writtenOff';
+                hadLoan = true;
+            }
+        });
+        if (hadLoan) {
+            this.currentSave.gameStats.debtEvaporated = true;
+            this.checkAchievements();
+        }
+
+        // 生成破产新闻（事后诸葛亮）
+        this.pushNews({
+            type: 'hindsight',
+            headline: `${data.name}惨遭破产清算`,
+            body: '连续' + this.bankruptcyDays + '日股价低于' + this.bankruptcyPrice + '元后，' + data.name + '最终未能挺过流动性危机，正式进入破产清算程序。',
+            relatedCodes: [code]
+        });
+
+        this.showNotification(`🏚️ ${data.name} 触发破产清算！`);
+        if (hadLoan) this.showNotification('💸 银行破产，你的贷款债务已核销！');
+        this.saveUsers();
+        if (this.currentTab === 'world') {
+            this.renderLoans();
+            this.renderWorldNews();
+        }
+    }
+
+    // 破产机制是否启用（贷款或新闻玩法任一启用时才生效，原版游戏无破产）
+    bankruptcyEnabled() {
+        return (this.loanEnabled || this.newsEnabled) && !!this.currentSave;
+    }
+
+    // 开局设置：破产参数行仅在新闻或贷款启用时显示
+    updateBankruptcyOptionVisibility() {
+        const row = document.getElementById('bankruptcy-options');
+        if (!row) return;
+        const newsOn = document.getElementById('news-enabled').checked;
+        const loanOn = document.getElementById('loan-enabled').checked;
+        row.style.display = (newsOn || loanOn) ? '' : 'none';
     }
 
     // 更新市场数据
@@ -1674,6 +2255,18 @@ class StockSimulator {
                 if (data.history.length > 60) {
                     data.history.shift();
                 }
+                
+                // 破产判定：连续N日收盘价低于M元视为破产（仅贷款或新闻玩法启用时）
+                if (this.bankruptcyEnabled() && data.industry === '银行' && !this.bankruptBanks.has(code)) {
+                    if (data.prevClose < this.bankruptcyPrice) {
+                        this.currentSave.loans.lowPriceDays[code] = (this.currentSave.loans.lowPriceDays[code] || 0) + 1;
+                    } else {
+                        this.currentSave.loans.lowPriceDays[code] = 0;
+                    }
+                    if (this.currentSave.loans.lowPriceDays[code] >= this.bankruptcyDays) {
+                        this.triggerBankruptcy(code, data);
+                    }
+                }
             }
             
             // 随机价格波动
@@ -1743,6 +2336,13 @@ class StockSimulator {
             // 生成五档行情
             this.generateOrderBook(data);
         });
+
+        // 新交易日：贷款日结算 + 新闻生成（跳过期间同样执行完整正常流程）
+        if (isNewTradingDay && this.currentSave) {
+            this.tradingDayCount++;
+            if (this.loanEnabled) this.processLoanDaily();
+            if (this.newsEnabled) this.maybeGenerateNews();
+        }
 
         // 使用保存的搜索关键词重新渲染列表，保留搜索状态（跳过期间暂缓重绘以加速）
         if (!this.skipMode) {
@@ -3218,14 +3818,17 @@ class StockSimulator {
         const totalTrades = saves.reduce((sum, s) => sum + (s.gameStats?.tradeCount || 0), 0);
         const achievements = this.currentSave.achievements || [];
 
+        // 仅显示当前存档已启用功能的成就
+        const visibleAchievements = AchievementSystem.getVisibleAchievements(this.getEnabledFeatures());
+
         document.getElementById('stat-games').textContent = saves.length;
         document.getElementById('stat-trades').textContent = totalTrades;
-        document.getElementById('stat-achievements').textContent = `${achievements.length}/${AchievementSystem.achievements.length}`;
+        document.getElementById('stat-achievements').textContent = `${achievements.length}/${visibleAchievements.length}`;
 
         // 成就统计
         const counts = { bronze: 0, silver: 0, gold: 0, legend: 0 };
         achievements.forEach(id => {
-            const ach = AchievementSystem.achievements.find(a => a.id === id);
+            const ach = visibleAchievements.find(a => a.id === id);
             if (ach) counts[ach.level]++;
         });
 
@@ -3242,7 +3845,7 @@ class StockSimulator {
         const isExpanded = localStorage.getItem('achievements-expanded') === 'true';
         
         // 渲染成就列表
-        const allAchievements = AchievementSystem.achievements.map(ach => {
+        const allAchievements = visibleAchievements.map(ach => {
             const unlocked = achievements.includes(ach.id);
             return `
                 <div class="achievement-card ${unlocked ? 'unlocked' : 'locked'}">
@@ -3259,7 +3862,7 @@ class StockSimulator {
         listEl.innerHTML = allAchievements;
         
         // 控制按钮显示/隐藏
-        if (AchievementSystem.achievements.length <= 6) {
+        if (visibleAchievements.length <= 6) {
             toggleBtn.style.display = 'none';
         } else {
             toggleBtn.style.display = 'block';
@@ -3291,7 +3894,8 @@ class StockSimulator {
         const defaultHeight = cardHeight * 6 + 15 * 5; // 6个卡片 + 5个间隙
         
         // 计算展开后的高度
-        const totalCards = AchievementSystem.achievements.length;
+        const visibleAchievements = AchievementSystem.getVisibleAchievements(this.getEnabledFeatures());
+        const totalCards = visibleAchievements.length;
         const expandedHeight = cardHeight * totalCards + 15 * (totalCards - 1);
         
         // 应用高度
@@ -3312,7 +3916,7 @@ class StockSimulator {
         console.log(`当前已解锁成就: ${unlocked.length}个`);
         console.log('已解锁成就列表:', unlocked);
         
-        const newAchievements = AchievementSystem.checkAchievements(stats, unlocked);
+        const newAchievements = AchievementSystem.checkAchievements(stats, unlocked, this.getEnabledFeatures());
         
         console.log(`新解锁成就: ${newAchievements.length}个`);
         
@@ -3383,9 +3987,9 @@ class StockSimulator {
         // 检查是否持有茅台
         const holdMaotai = save.holdings && save.holdings['600519'] !== undefined;
 
-        // 计算已解锁成就数量（用于成就猎人）
+        // 计算已解锁成就数量（用于成就猎人，按启用的功能过滤）
         const unlockedAchievements = save.achievements || [];
-        const allAchievements = AchievementSystem.achievements;
+        const allAchievements = AchievementSystem.getVisibleAchievements(this.getEnabledFeatures());
         const allAchievementsUnlocked = unlockedAchievements.length >= allAchievements.length - 1; // 排除成就猎人本身
 
         // 计算总手续费
@@ -3604,7 +4208,10 @@ class StockSimulator {
             earlyTrades: earlyTrades > 0,
             lateTrades: lateTrades > 0,
             beatMarket: save.gameStats?.beatMarket || false,
-            perfectGame: save.gameStats?.perfectGame || false
+            perfectGame: save.gameStats?.perfectGame || false,
+            // 贷款玩法成就统计
+            missedPayment: save.gameStats?.missedPayment || false,
+            debtEvaporated: save.gameStats?.debtEvaporated || false
         };
 
         // 添加日志记录
@@ -3877,7 +4484,8 @@ class StockSimulator {
         const modal = document.getElementById('debug-modal');
         const select = document.getElementById('debug-achievement');
         
-        select.innerHTML = AchievementSystem.achievements.map(ach => 
+        const visibleAchievements = AchievementSystem.getVisibleAchievements(this.getEnabledFeatures());
+        select.innerHTML = visibleAchievements.map(ach => 
             `<option value="${ach.id}">${ach.name} (${AchievementSystem.getLevelName(ach.level)})</option>`
         ).join('');
         
@@ -4025,7 +4633,7 @@ class StockSimulator {
                 this.users[this.currentUser.username].saves[this.currentSaveIndex] = this.currentSave;
             }
             this.saveUsers();
-            const ach = AchievementSystem.achievements.find(a => a.id === id);
+            const ach = AchievementSystem.getVisibleAchievements(this.getEnabledFeatures()).find(a => a.id === id);
             this.showAchievementPopup(ach);
             // 实时更新成就墙
             this.updateProfile();
@@ -4033,8 +4641,8 @@ class StockSimulator {
     }
 
     debugUnlockAllAchievements() {
-        // 获取所有成就
-        const allAchievements = AchievementSystem.achievements;
+        // 获取所有可见成就（仅当前启用功能的成就）
+        const allAchievements = AchievementSystem.getVisibleAchievements(this.getEnabledFeatures());
         const currentAchievements = this.currentSave.achievements || [];
         
         // 筛选出未解锁的成就
@@ -4382,6 +4990,8 @@ class StockSimulator {
             this.updateTradeAvailable();
         } else if (tabName === 'profile') {
             this.updateProfile();
+        } else if (tabName === 'world') {
+            this.openWorldPage();
         }
     }
 

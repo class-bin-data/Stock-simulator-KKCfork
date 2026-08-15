@@ -116,6 +116,61 @@
                     </div>
                 </div>
 
+                <div class="setup-section">
+                    <h3>扩展玩法</h3>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="news-enabled">
+                        <span>启用 新闻事件</span>
+                    </label>
+                    <div class="loan-options news-prob-row" style="display:none;">
+                        <span>新闻频率:</span>
+                        <select id="news-probability">
+                            <option value="0.2">低 (20%)</option>
+                            <option value="0.4" selected>中 (40%)</option>
+                            <option value="0.7">高 (70%)</option>
+                        </select>
+                    </div>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="loan-enabled">
+                        <span>启用 贷款</span>
+                    </label>
+                    <div id="loan-options" class="loan-options" style="display:none;">
+                        <div class="loan-option-row">
+                            <span>日利率区间(%):</span>
+                            <input type="number" id="loan-min-interest" value="0.05" step="0.01" min="0" max="5">
+                            <span>~</span>
+                            <input type="number" id="loan-max-interest" value="0.30" step="0.01" min="0" max="5">
+                        </div>
+                        <div class="loan-option-row">
+                            <span>可贷比例(资产%):</span>
+                            <input type="number" id="loan-ratio" value="50" step="5" min="10" max="100">
+                        </div>
+                        <div class="loan-option-row">
+                            <span>还款期限(交易日):</span>
+                            <input type="number" id="loan-due-days" value="30" step="5" min="5" max="120">
+                        </div>
+                        <div class="loan-option-row">
+                            <span>逾期宽限(交易日):</span>
+                            <input type="number" id="loan-grace-days" value="3" step="1" min="0" max="10">
+                        </div>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="loan-reminder" checked>
+                            <span>到期提醒</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="loan-forced" checked>
+                            <span>逾期强制扣款/查封资产</span>
+                        </label>
+                    </div>
+                    <div class="loan-option-row" id="bankruptcy-options" style="display:none;">
+                        <span>破产条件:</span>
+                        <input type="number" id="bankruptcy-days" value="3" min="1" max="30">
+                        <span>日股价低于</span>
+                        <input type="number" id="bankruptcy-price" value="1" min="0.01" max="100" step="0.01">
+                        <span>元视为破产（连续N日）</span>
+                    </div>
+                </div>
+
                 <div class="setup-actions">
                     <button id="start-game-btn" class="btn-primary">开始游戏</button>
                     <button id="setup-back-btn" class="btn-secondary">返回</button>
@@ -134,6 +189,7 @@
                     <button class="nav-btn" data-page="auto-trade">自动交易</button>
                     <button class="nav-btn" data-page="portfolio">持仓</button>
                     <button class="nav-btn" data-page="profile">我的</button>
+                    <button id="world-btn" class="nav-btn" data-page="world" style="display:none;" title="世界：新闻与贷款">世界<span id="world-badge" class="world-badge" style="display:none;"></span></button>
                 </nav>
                 <div class="header-actions">
                     <button id="theme-toggle" class="icon-btn">🌙</button>
@@ -573,6 +629,30 @@
                     </div>
                 </div>
             </div>
+
+            <!-- 世界页面（新闻 + 贷款） -->
+            <div id="world-page" class="page">
+                <div class="world-container">
+                    <div class="world-tabs">
+                        <button class="world-tab active" data-world-tab="news">新闻</button>
+                        <button class="world-tab" data-world-tab="loan">贷款</button>
+                    </div>
+                    <div id="world-news-panel" class="world-panel active">
+                        <div id="world-news-list" class="world-news-list"></div>
+                    </div>
+                    <div id="world-loan-panel" class="world-panel">
+                        <div class="loan-overview">
+                            <div class="loan-stat"><span>信用</span><b id="loan-credit">--</b></div>
+                            <div class="loan-stat"><span>总资产</span><b id="loan-assets">--</b></div>
+                            <div class="loan-stat"><span>总负债</span><b id="loan-total-debt">--</b></div>
+                        </div>
+                        <h4 class="world-sub-title">选择银行</h4>
+                        <div id="loan-banks-list" class="loan-banks-list"></div>
+                        <h4 class="world-sub-title">我的贷款</h4>
+                        <div id="loan-my-list" class="loan-my-list"></div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- 设置面板 -->
@@ -603,6 +683,24 @@
                     </div>
                 </div>
                 <button id="close-settings" class="btn-primary">关闭</button>
+            </div>
+        </div>
+
+        <!-- 贷款申请弹窗 -->
+        <div id="loan-apply-modal" class="modal">
+            <div class="modal-content">
+                <h3>申请贷款</h3>
+                <p id="loan-apply-bank" class="loan-apply-bank"></p>
+                <p id="loan-apply-max" class="loan-apply-hint"></p>
+                <div class="form-group">
+                    <label>贷款金额</label>
+                    <input type="number" id="loan-apply-amount" min="1" step="1000" placeholder="输入贷款金额">
+                </div>
+                <div id="loan-apply-error" class="error-message" style="display:none; margin:10px 0; color:#ff4757; font-size:14px;"></div>
+                <div style="display:flex; gap:10px; margin-top:20px;">
+                    <button id="loan-apply-confirm" class="btn-primary">确认贷款</button>
+                    <button id="loan-apply-cancel" class="btn-secondary">取消</button>
+                </div>
             </div>
         </div>
 
@@ -717,6 +815,7 @@
     <script src="stockData.js"></script>
     <script src="crypto.js"></script>
     <script src="achievements.js"></script>
+    <script src="news.js"></script>
     <script src="game.js"></script>
 </body>
 </html>
