@@ -648,6 +648,15 @@ class StockSimulator {
                 }
             }, { passive: false });
             
+            // 股票点击事件委托：只绑定一次监听器，避免每次渲染为300+个条目重复绑定导致卡顿
+            stockList.addEventListener('click', (e) => {
+                const item = e.target.closest('.stock-item');
+                if (!item) return;
+                const code = item.dataset.code;
+                const stock = StockPool.find(s => s.code === code);
+                if (stock) this.selectStock(stock);
+            });
+            
             // 触摸设备处理
             let touchStartY = 0;
             let touchStartScrollTop = 0;
@@ -1704,6 +1713,8 @@ class StockSimulator {
             this.renderWorldNews();
             this.renderLoans();
         }
+        // 跳过期间已暂缓全量保存，这里统一落盘一次
+        this.saveUsers();
         this.showNotification('时间跳过完成');
     }
 
@@ -1760,7 +1771,8 @@ class StockSimulator {
         if (feed.length > 50) feed.pop();
         this.currentSave.news.unread = (this.currentSave.news.unread || 0) + 1;
         this.updateWorldBadge();
-        this.saveUsers();
+        // 跳过期间暂缓全量加密写入（每次 saveUsers 都会序列化整个用户数据），结束时统一保存
+        if (!this.skipMode) this.saveUsers();
         // 世界页面打开时实时刷新新闻列表（跳过期间暂缓，结束时统一刷新）
         if (this.currentTab === 'world' && this.newsEnabled && !this.skipMode) {
             this.renderWorldNews();
@@ -1886,13 +1898,18 @@ class StockSimulator {
     }
 
     // 某银行日利率（信用越高利率越低）
+    // 每家银行首次生成固定利率后缓存，避免每次渲染贷款面板都重新随机导致利率闪烁
     getBankRate(bank) {
         const cfg = this.loanConfig || { minInterest: 0.0005, maxInterest: 0.003 };
+        if (!cfg.bankRates) cfg.bankRates = {};
+        if (cfg.bankRates[bank.code] !== undefined) return cfg.bankRates[bank.code];
         const min = Math.min(cfg.minInterest, cfg.maxInterest);
         const max = Math.max(cfg.minInterest, cfg.maxInterest);
         const credit = ((this.currentSave.loans.credit || 0) / 100);
         const base = min + Math.random() * (max - min);
-        return Math.max(0, base * (1.3 - credit * 0.3));
+        const rate = Math.max(0, base * (1.3 - credit * 0.3));
+        cfg.bankRates[bank.code] = rate;
+        return rate;
     }
 
     // 打开贷款申请弹窗
@@ -1991,21 +2008,29 @@ class StockSimulator {
         document.getElementById('loan-assets').textContent = '¥' + this.formatMoney(this.getTotalAssets());
         document.getElementById('loan-total-debt').textContent = '¥' + this.formatMoney(this.getTotalDebt());
 
-        // 可选银行列表
+        // 可选银行列表（有未结清贷款的银行排前面）
         const banksEl = document.getElementById('loan-banks-list');
         if (banksEl) {
             const banks = this.getLoanBanks();
             if (!banks.length) {
                 banksEl.innerHTML = '<p class="empty-tip">股票池中没有可用银行</p>';
             } else {
-                banksEl.innerHTML = banks.map(bank => {
+                const loanedCodes = new Set(
+                    loans.loans.filter(l => l.status === 'active' || l.status === 'overdue').map(l => l.bankCode)
+                );
+                const orderedBanks = [
+                    ...banks.filter(b => loanedCodes.has(b.code)),
+                    ...banks.filter(b => !loanedCodes.has(b.code))
+                ];
+                banksEl.innerHTML = orderedBanks.map(bank => {
                     const bankrupt = this.bankruptBanks.has(bank.code);
+                    const hasLoan = loanedCodes.has(bank.code);
                     const maxLoan = bankrupt ? 0 : this.getBankMaxLoan(bank);
                     const rate = bankrupt ? 0 : this.getBankRate(bank);
                     return `
                         <div class="loan-bank-card ${bankrupt ? 'bankrupt' : ''}">
                             <div class="loan-bank-info">
-                                <h4>${this.esc(bank.name)} <small>${bank.code}</small></h4>
+                                <h4>${this.esc(bank.name)} <small>${bank.code}</small>${hasLoan ? '<span class="loan-status active">借款中</span>' : ''}</h4>
                                 <p>${bankrupt ? '该银行已破产清算，暂停贷款业务' : `日利率 ${(rate * 100).toFixed(2)}% · 可贷上限 ¥${this.formatMoney(maxLoan)}`}</p>
                             </div>
                             ${bankrupt
@@ -2017,10 +2042,14 @@ class StockSimulator {
             }
         }
 
-        // 我的贷款
+        // 我的贷款（默认只显示未结清的借贷）
         const myEl = document.getElementById('loan-my-list');
         if (myEl) {
             const myLoans = loans.loans.filter(l => l.status === 'active' || l.status === 'overdue');
+            const activeCountEl = document.getElementById('loan-active-count');
+            if (activeCountEl) {
+                activeCountEl.textContent = myLoans.length ? `（未结清 ${myLoans.length} 笔）` : '';
+            }
             if (!myLoans.length) {
                 myEl.innerHTML = '<p class="empty-tip">暂无未结清贷款</p>';
             } else {
@@ -2036,6 +2065,38 @@ class StockSimulator {
                             <p>本金 ¥${this.formatMoney(l.principal)} · 利息 ¥${this.formatMoney(Math.round(l.interestAccrued))}</p>
                             <p class="loan-due">待还 ¥${this.formatMoney(total)}</p>
                             <button class="btn-primary btn-small" onclick="game.repayLoan('${l.id}')">还款</button>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        // 已结清记录（默认折叠不展示，仅需查看历史时展开）
+        const historyListEl = document.getElementById('loan-history-list');
+        const historyDetails = document.getElementById('loan-history');
+        const historyCountEl = document.getElementById('loan-history-count');
+        if (historyListEl && historyDetails) {
+            const history = loans.loans.filter(l => l.status !== 'active' && l.status !== 'overdue');
+            historyDetails.style.display = history.length ? '' : 'none';
+            if (historyCountEl) historyCountEl.textContent = history.length ? `（${history.length}）` : '';
+            if (!history.length) {
+                historyListEl.innerHTML = '<p class="empty-tip">暂无已结清记录</p>';
+            } else {
+                historyListEl.innerHTML = history.map(l => {
+                    const total = Math.ceil(l.principal + l.interestAccrued);
+                    let statusText;
+                    if (l.status === 'repaid') statusText = '已还款';
+                    else if (l.status === 'collected') statusText = '已强制结清';
+                    else if (l.status === 'writtenOff') statusText = '破产核销';
+                    else statusText = l.status;
+                    return `
+                        <div class="loan-item settled">
+                            <div class="loan-item-head">
+                                <h4>${this.esc(l.bankName)} <small>${l.bankCode}</small></h4>
+                                <span class="loan-status settled">${statusText}</span>
+                            </div>
+                            <p>本金 ¥${this.formatMoney(l.principal)} · 利息 ¥${this.formatMoney(Math.round(l.interestAccrued))} · 第${l.dayBorrowed !== undefined ? l.dayBorrowed : '-'}交易日借入</p>
+                            ${l.repaidDay !== undefined ? `<p class="loan-due">结清于第${l.repaidDay}交易日（合计 ¥${this.formatMoney(total)}）</p>` : ''}
                         </div>
                     `;
                 }).join('');
@@ -2058,7 +2119,8 @@ class StockSimulator {
                     loan.status = 'overdue';
                     loan.overdueDays = 1;
                     missed = true;
-                    if (this.loanConfig.reminder) {
+                    // 跳过期间抑制弹窗通知，避免大量通知堆积造成卡顿
+                    if (this.loanConfig.reminder && !this.skipMode) {
                         this.showNotification(`⏰ ${loan.bankName}贷款已到期，请尽快还款！`);
                     }
                 }
@@ -2076,9 +2138,12 @@ class StockSimulator {
             this.currentSave.loans.credit = Math.max(0, (this.currentSave.loans.credit || 0) - 10);
             this.checkAchievements();
         }
-        this.saveUsers();
-        if (this.currentTab === 'world' && this.loanEnabled) {
-            this.renderLoans();
+        // 跳过期间暂缓全量保存与界面渲染，结束时统一处理
+        if (!this.skipMode) {
+            this.saveUsers();
+            if (this.currentTab === 'world' && this.loanEnabled) {
+                this.renderLoans();
+            }
         }
     }
 
@@ -2114,17 +2179,19 @@ class StockSimulator {
                 }
                 this.currentSave.fund += net;
                 collected += net;
-                this.showNotification(`🏦 ${loan.bankName}强制查封了${data.name}持仓以抵债`);
+                if (!this.skipMode) this.showNotification(`🏦 ${loan.bankName}强制查封了${data.name}持仓以抵债`);
                 this.recordTrade('sell', code, data, data.price, sellable, sellAmount, fee, pnl);
                 break; // 每次只查封一只股票，避免复杂循环
             }
         }
 
         loan.status = 'collected';
-        this.showNotification(collected >= total
-            ? `🏦 ${loan.bankName}已强制结清逾期贷款`
-            : `🏦 ${loan.bankName}强制收回了部分债务`);
-        this.saveUsers();
+        if (!this.skipMode) {
+            this.showNotification(collected >= total
+                ? `🏦 ${loan.bankName}已强制结清逾期贷款`
+                : `🏦 ${loan.bankName}强制收回了部分债务`);
+        }
+        if (!this.skipMode) this.saveUsers();
         this.updateTradeAvailable();
         this.updatePortfolio();
     }
@@ -2158,12 +2225,17 @@ class StockSimulator {
             relatedCodes: [code]
         });
 
-        this.showNotification(`🏚️ ${data.name} 触发破产清算！`);
-        if (hadLoan) this.showNotification('💸 银行破产，你的贷款债务已核销！');
-        this.saveUsers();
-        if (this.currentTab === 'world') {
-            this.renderLoans();
-            this.renderWorldNews();
+        // 跳过期间抑制弹窗通知与全量保存，结束时统一处理
+        if (!this.skipMode) {
+            this.showNotification(`🏚️ ${data.name} 触发破产清算！`);
+            if (hadLoan) this.showNotification('💸 银行破产，你的贷款债务已核销！');
+        }
+        if (!this.skipMode) {
+            this.saveUsers();
+            if (this.currentTab === 'world') {
+                this.renderLoans();
+                this.renderWorldNews();
+            }
         }
     }
 
@@ -2200,17 +2272,9 @@ class StockSimulator {
         // 检查是否在交易时间内，非交易时间完全禁止市场更新
         const isTradingTime = this.isTradingTime();
         
-        // 非交易时间：完全不更新市场数据
+        // 非交易时间：价格完全冻结，无需重复刷新行情/持仓UI（时间显示已由 updateGameTime 更新）。
+        // 之前每tick都重渲染300+行列表与K线，是造成时间推进缓慢的主要因素之一。
         if (!isTradingTime) {
-            // 只更新UI显示，不更新任何价格或K线数据（跳过期间暂缓重绘以加速）
-            if (!this.skipMode) {
-                this.renderStockList(this.stockSearch.keyword);
-                if (this.selectedStock) {
-                    this.updateStockDetail();
-                }
-                this.updatePortfolioRealTime();
-                this.updateTradeAvailable();
-            }
             return;
         }
         
@@ -2423,6 +2487,44 @@ class StockSimulator {
             });
         }
         
+        // 结构key：搜索/排序/自选模式/自选列表任一变化都需全量重建；
+        // 纯行情tick时key不变，只增量刷新价格文本，避免每tick重建300+个DOM节点导致卡顿
+        const renderKey = `${filter}|${this.stockSort.field || ''}|${this.stockSort.order}|${this.watchlistMode ? 1 : 0}|${watchlist.join(',')}`;
+        const isStructuralChange = this._stockListRenderKey !== renderKey;
+        this._stockListRenderKey = renderKey;
+
+        if (!isStructuralChange) {
+            // 增量更新：仅刷新价格/涨跌幅与选中高亮
+            const items = listEl.children;
+            let matched = items.length === stocks.length;
+            if (matched) {
+                for (let i = 0; i < items.length; i++) {
+                    const el = items[i];
+                    if (el.dataset.code !== stocks[i].code) { matched = false; break; }
+                    const data = this.stockData.get(stocks[i].code);
+                    const change = ((data.price - data.prevClose) / data.prevClose * 100).toFixed(2);
+                    const changeClass = change >= 0 ? 'up' : 'down';
+                    const changeSymbol = change >= 0 ? '+' : '';
+                    const priceEl = el.querySelector('.stock-item-price');
+                    if (priceEl) {
+                        priceEl.textContent = data.price.toFixed(2);
+                        priceEl.className = `stock-item-price ${changeClass}`;
+                    }
+                    const changeEl = el.querySelector('.stock-item-change');
+                    if (changeEl) {
+                        changeEl.textContent = `${changeSymbol}${change}%`;
+                        changeEl.className = `stock-item-change ${changeClass}`;
+                    }
+                    el.classList.toggle('active', !!(this.selectedStock && this.selectedStock.code === stocks[i].code));
+                }
+            }
+            if (matched) {
+                this.updateSortIndicators();
+                return;
+            }
+        }
+
+        // 全量重建（首次渲染 / 搜索 / 排序 / 自选切换 / 兜底）
         let html = '';
         stocks.forEach(stock => {
             const data = this.stockData.get(stock.code);
@@ -2447,13 +2549,7 @@ class StockSimulator {
 
         listEl.innerHTML = html;
 
-        listEl.querySelectorAll('.stock-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const code = item.dataset.code;
-                const stock = StockPool.find(s => s.code === code);
-                this.selectStock(stock);
-            });
-        });
+        // 点击事件已通过 stock-list 容器的委托监听处理（见 bindEvents），无需逐条绑定
         
         // 更新排序指示器
         this.updateSortIndicators();
@@ -2461,7 +2557,6 @@ class StockSimulator {
     
     // 处理排序点击
     handleSortClick(field) {
-        console.log('handleSortClick:', field, 'current:', this.stockSort);
         if (this.stockSort.field === field) {
             // 同一字段：升序 -> 降序 -> 取消排序 -> 升序 ...
             if (this.stockSort.order === 'asc') {
@@ -2476,27 +2571,22 @@ class StockSimulator {
             this.stockSort.field = field;
             this.stockSort.order = 'asc';
         }
-        console.log('after:', this.stockSort);
         // 重新渲染列表，使用保存的搜索关键词
         this.renderStockList(this.stockSearch.keyword);
     }
     
     // 更新排序指示器
     updateSortIndicators() {
-        console.log('updateSortIndicators:', this.stockSort);
         document.querySelectorAll('.stock-list-header .sortable').forEach(header => {
             const field = header.dataset.sort;
             const indicator = header.querySelector('.sort-indicator');
-            console.log('header:', field, 'indicator:', indicator);
             
             if (this.stockSort.field === field) {
                 header.classList.add('sorted');
                 indicator.textContent = this.stockSort.order === 'asc' ? '▲' : '▼';
-                console.log('set indicator for', field, 'to', this.stockSort.order);
             } else {
                 header.classList.remove('sorted');
                 indicator.textContent = '';
-                console.log('clear indicator for', field);
             }
         });
     }
@@ -2748,8 +2838,11 @@ class StockSimulator {
         // 更新自选按钮状态
         this.updateWatchButton();
 
-        this.drawKLine(data);
-        this.drawVolume(data);
+        // K线/成交量重绘降频（每2个tick一次），文本数据仍每tick实时更新
+        if (this.marketTickCount % 2 === 0) {
+            this.drawKLine(data);
+            this.drawVolume(data);
+        }
     }
 
     // 绘制K线图（支持缩放）

@@ -2223,6 +2223,35 @@ body.festival-theme {
     background: rgba(231,76,60,0.2);
     color: #e74c3c;
 }
+.loan-status.settled {
+    background: rgba(120,120,120,0.2);
+    color: var(--text-secondary);
+}
+.loan-item.settled {
+    opacity: 0.85;
+}
+.loan-count-badge {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: normal;
+    margin-left: 4px;
+}
+.loan-history {
+    margin-top: 8px;
+    border-top: 1px dashed var(--border-color);
+    padding-top: 6px;
+}
+.loan-history summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding: 2px 0;
+    user-select: none;
+    outline: none;
+}
+.loan-history summary:hover {
+    color: var(--text-primary);
+}
 
 /* 贷款申请弹窗 */
 .loan-apply-bank {
