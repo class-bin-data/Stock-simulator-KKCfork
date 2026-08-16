@@ -8,13 +8,13 @@
 
 A pure-entertainment, zero-stress Chinese A-share stock trading simulator platform. All data is generated and stored locally inside your browser without connecting to real market APIs. Users can learn trading rules, experience market fluctuations, and test strategies in a risk-free environment.
 
-> Version: v2.3.2  
+> Version: v2.4.0
 > Developer: Moke Xintu (Bilibili)
 
 ---
 <div align="center">
   <a href="https://www.bilibili.com/video/BV1sWNwzVEek/" target="_blank">
-    <img src="./images/cover.jpg" width="600" alt="全新股票模拟器演示视频">
+    <img src="./images/cover-en.png" width="600" alt="全新股票模拟器演示视频">
   </a>
   <p>📺 <b><a href="https://www.bilibili.com/video/BV1sWNwzVEek/" target="_blank">Click here to watch the full demonstration video on Bilibili.</a></b></p>
   <p>▶️ <b><a href="https://youtu.be/SESTTuLqTi4?si=GlUPLyUWA1FDomzB" target="_blank">Click here to watch the full demonstration video on YouTube.</a></b></p>
@@ -40,12 +40,15 @@ A pure-entertainment, zero-stress Chinese A-share stock trading simulator platfo
     -   [K-Line Charting System](#k-line-charting-system)
     -   [Debug Panel](#debug-panel)
     -   [Themes & UI](#themes--ui)
+    -   [Internationalization (i18n)](#internationalization-i18n)
     -   [Beginner Tutorial](#beginner-tutorial)
     -   [Data Security & Backup](#data-security--backup)
 -   [Trading Rules](#trading-rules)
 -   [UI Navigation Guide](#ui-navigation-guide)
 -   [Frequently Asked Questions](#frequently-asked-questions)
 -   [Developer Information](#developer-information)
+-   [Contributing](#contributing)
+-   [License](#license)
 -   [Future Roadmap](#future-roadmap)
 -   [Star History](#star-history)
 
@@ -84,6 +87,7 @@ Positioned as a "pure entertainment" tool, it involves no real capital. All mark
 -   **Time Control System**: Simulates trading hours with support for manual adjustments, presets, and random jumps
 -   **Debug Panel**: Hidden developer dashboard to modify capital, unlock achievements, control time, and reset market state
 -   **Multi-Theme Support**: Dark (default), Light, and Festival themes
+-   **Bilingual UI (Chinese/English)**: Built-in internationalization (i18n) system with one-click language switching; preferences are automatically saved
 -   **Beginner Tutorial**: Guided 9-step walkthrough automatically triggered for new users
 -   **Save File Import/Export**: Export encrypted user data files for cross-device migration
 -   **Responsive Design**: Compatible with desktop and mobile screens
@@ -108,15 +112,22 @@ Positioned as a "pure entertainment" tool, it involves no real capital. All mark
 
 ```text
 Stock simulator/
-├── index.html        # Main HTML structure (715 lines)
-├── game.js           # Core game logic (5300+ lines)
-│   ├── LimitManager class   # Daily price limits & circuit breaker manager
-│   └── StockSimulator class # Main game controller & business logic
-├── stockData.js      # A-share stock pool data (300+ stocks, 443 lines)
-├── achievements.js   # Achievement configuration & logic (233 lines)
-├── crypto.js         # Encryption utilities (XOR + Base64 + Hash + UUID, 65 lines)
-├── styles.css        # Full application styles & themes (3252 lines)
-└── README.html       # HTML version of the user guide
+├── index.html              # Main HTML structure
+├── game.js                 # Core game logic (5200+ lines)
+│   ├── LimitManager class        # Daily price limits & circuit breaker manager
+│   └── StockSimulator class      # Main game controller & business logic
+├── stockData.js            # A-share stock pool data (300+ stocks)
+├── achievements.js         # Achievement configuration & logic
+├── crypto.js               # Encryption utilities (XOR + Base64 + Hash + UUID)
+├── i18n.js                 # Internationalization core module (I18nManager class)
+├── locales/                # Language resource files directory
+│   ├── zh-CN.js            # Chinese language resources (512 translations)
+│   └── en-US.js            # English language resources (512 translations)
+├── styles.css              # Full application styles & themes (incl. language switch UI)
+├── images/                 # Project image assets
+│   ├── cover.jpg           # Chinese version cover image
+│   └── cover-en.png        # English version cover image
+└── LICENSE                 # MIT open-source license
 ```
 
 ### Script Loading Order
@@ -127,6 +138,9 @@ In `index.html`, scripts must be loaded in the following exact order due to glob
 <script src="stockData.js"></script>     <!-- Global object StockPool -->
 <script src="crypto.js"></script>        <!-- Global object Crypto -->
 <script src="achievements.js"></script>  <!-- Global object AchievementSystem -->
+<script src="locales/zh-CN.js"></script> <!-- Global object ZH_CN (Chinese resources) -->
+<script src="locales/en-US.js"></script> <!-- Global object EN_US (English resources) -->
+<script src="i18n.js"></script>          <!-- Global object I18n (i18n instance) -->
 <script src="game.js"></script>          <!-- Main application, depends on all above -->
 ```
 
@@ -167,7 +181,8 @@ User information is stored in browser LocalStorage under the key `stock_simulato
   achievements: Array,           // Global user achievements (across saves)
   tutorialCompleted: Boolean,    // Tutorial status
   theme: 'dark' | 'light' | 'festival',  // Theme preference
-  refreshRate: Number            // Market update rate in ms
+  refreshRate: Number,           // Market update rate in ms
+  lang: 'zh-CN' | 'en-US'        // Language preference (i18n)
 }
 ```
 
@@ -178,7 +193,7 @@ User information is stored in browser LocalStorage under the key `stock_simulato
 -   **Auto-Login**: Remembers the last active user session.
 -   **Change Password**: Requires verification of the current password and confirmation of the new password.
 -   **Delete Account**: Requires typing `DELETE` for irreversible account removal.
--   **Data Migration**: Automatically fills missing data properties (`tutorialCompleted`, `theme`, `refreshRate`) for legacy data formats upon load.
+-   **Data Migration**: Automatically fills missing data properties (`tutorialCompleted`, `theme`, `refreshRate`, `lang`) for legacy data formats upon load.
 
 ### Save System
 
@@ -379,6 +394,43 @@ Supported themes via CSS Variables:
 
 Supports market color conventions: Red = Up, Green = Down.
 
+### Internationalization (i18n)
+
+The project includes a complete bilingual (Chinese/English) internationalization system, implemented by the `I18nManager` class in [i18n.js](file:///c:/Users/Administrator/Documents/trae_projects/Stock%20simulator/i18n.js). Language resources are stored in the [locales/](file:///c:/Users/Administrator/Documents/trae_projects/Stock%20simulator/locales/) directory.
+
+#### Core Mechanism
+
+-   **Translation Function**: `I18n.t(key, params)` retrieves translated text by key, supporting `{placeholder}` parameter interpolation
+-   **DOM Auto-Refresh**: `I18n.applyToDOM()` batch-updates all elements marked with `data-i18n` / `data-i18n-placeholder` / `data-i18n-title` / `data-i18n-html` attributes
+-   **Instant Switching**: Call `I18n.setLanguage(lang)` or `I18n.toggleLanguage()` to switch languages and refresh the entire page instantly
+-   **Callback Notification**: `I18n.onChange(callback)` registers language change callbacks for dynamic content re-rendering
+
+#### DOM Attribute Conventions
+
+| Attribute | Purpose |
+| :-------- | :------ |
+| `data-i18n="key"` | Sets the element's `textContent` |
+| `data-i18n-placeholder="key"` | Sets input `placeholder` |
+| `data-i18n-title="key"` | Sets the element's `title` |
+| `data-i18n-html="key"` | Sets the element's `innerHTML` (for text containing HTML tags) |
+
+#### Language Switch UI
+
+-   **Login page**: Click the 🌐 circular button in the top-right corner to toggle between Chinese and English
+-   **Settings panel**: Use the language dropdown to select "中文" or "English"
+
+#### Language Preference Persistence
+
+-   **Logged-in users**: Language preference is saved in the user data's `lang` field and automatically restored on login
+-   **Guests**: Language preference is saved in LocalStorage (key: `stock_simulator_lang`)
+-   **Fallback**: Missing translation keys automatically fall back to Chinese
+
+#### Localization Adaptations
+
+-   **Currency formatting**: Chinese uses "万/亿" units; English uses "K/M/B" units
+-   **Date formatting**: Uses `toLocaleString()` with the current language locale
+-   **Achievement system**: Achievement names and descriptions support bilingual switching
+
 ### Beginner Tutorial
 
 A 9-step interactive guided overlay explaining market features, order execution, position monitoring, navigation, and shortcuts. Automatically flags `tutorialCompleted = true` when finished or skipped.
@@ -434,6 +486,7 @@ Login / Register Screen -> Save Select Screen -> Game Setup Screen -> Main Game 
 
 -   Login form: username, password, supports Enter to submit
 -   Registration form: username, password, confirm password, supports Enter to move between input fields
+-   Language toggle: 🌐 button in the top-right corner for instant Chinese/English switching
 -   Error prompts: real-time login/register errors are displayed
 
 ### Save Select Screen (save-select-screen)
@@ -487,7 +540,7 @@ The top navigation bar contains five main pages:
 
 ### Modal Windows and Panels
 
--   Settings panel: theme switching, market refresh rate
+-   Settings panel: theme switching, market refresh rate, language selection
 -   Password change panel: current password, new password, confirmation
 -   Debug panel: fund editing, achievement unlock, time control, market control
 -   Achievement popup: new achievement unlock notification
@@ -530,6 +583,14 @@ Possible reasons include:
 ### What is the "影视飓风" stock?
 Stock code `999999` is an Easter-egg stock named "影视飓风" (Yingshi Jufeng / MediaStorm). It has a special market algorithm with a 70% chance of rising and behaves better than ordinary stocks.
 
+### How do I switch between Chinese and English?
+There are two ways to switch languages:
+
+-   Click the 🌐 button in the top-right corner of the login page for a quick toggle
+-   Use the "Language" dropdown in the Settings panel after entering the game
+
+Your language preference is automatically saved and applied on your next visit.
+
 ---
 
 ## Developer Information
@@ -556,6 +617,7 @@ The project is centered around two core classes:
 | Auto-Trade         | `addAutoTradeStock`, `editAutoTradeStock`, `removeAutoTradeStock`, `startAutoTrade`, `pauseAutoTrade`, `stopAutoTrade`, `checkAutoTradeCondition`, `executeAutoTrade` |
 | Debug Panel        | `showDebugPanel`, `debugSetTime`, `debugSetFund`, `debugUnlockAchievement`, `debugResetMarket`                                    |
 | Tutorial System    | `startTutorial`, `showTutorialStep`, `nextTutorial`, `endTutorial`                                                                |
+| Internationalization| `applyUserLanguage`, `onLanguageChanged`, `toggleLanguage`                                                                       |
 | Utility Methods    | `formatMoney`, `showScreen`, `switchTab`, `setTheme`, `exportSave`, `importSave`                                                  |
 
 ### Startup Flow
@@ -565,8 +627,9 @@ The application startup logic is located in `game.js`:
 1.  `DOMContentLoaded` fires
 2.  Right-click menu is disabled globally
 3.  `StockSimulator` is instantiated, and the constructor calls `init()`
-4.  `init()` then calls `loadUsers()` to load data and perform migration, `bindEvents()` to bind all events, and `checkAutoLogin()` to attempt automatic login
-5.  Browser back-button behavior is handled via `popstate`
+4.  `init()` calls `I18n.init()` (initialize i18n), `I18n.applyToDOM()` (refresh static text), `loadUsers()` (load data and migrate), `bindEvents()` (bind all events), `applyUserLanguage()` (apply user language preference), and `checkAutoLogin()` (attempt auto-login)
+5.  Registers `I18n.onChange()` callback to auto-refresh all dynamic content on language switch
+6.  Browser back-button behavior is handled via `popstate`
 
 ### Data Flow
 
@@ -590,6 +653,14 @@ User action → Event listener → StockSimulator method
 
 **Add a new theme**: create a new selector in `styles.css`, such as `body.{theme}-theme`, and update the theme dropdown in `index.html` and the `setTheme()` logic in `game.js`.
 
+**Add a new language or translations**:
+
+1. Create a new language resource file in the [locales/](file:///c:/Users/Administrator/Documents/trae_projects/Stock%20simulator/locales/) directory (e.g., `ja-JP.js`), exporting a global object (e.g., `window.JA_JP`) with the same key structure as `zh-CN.js`
+2. Register the new language in the `locales` object in [i18n.js](file:///c:/Users/Administrator/Documents/trae_projects/Stock%20simulator/i18n.js)
+3. Add the corresponding `<script>` tag and language dropdown option in [index.html](file:///c:/Users/Administrator/Documents/trae_projects/Stock%20simulator/index.html)
+4. Add `data-i18n` attributes to new UI text elements and add corresponding keys to both language resource files
+5. Replace hardcoded strings in dynamically generated text with `I18n.t('key')` calls
+
 ---
 
 ## Future Roadmap
@@ -600,6 +671,8 @@ User action → Event listener → StockSimulator method
 -   [x] Increase achievement variety (50+ items added)
 -   [x] Optimize the user interface
 -   [x] Add beginner tutorial support
+-   [x] Chinese-English bilingual switching (full i18n system implemented)
+-   [ ] Support more languages (Japanese, Korean, etc.)
 
 ---
 
@@ -611,7 +684,43 @@ If you have questions or suggestions, please contact the developer:
 
 ---
 
-**Version**: v2.3.2
+## Contributing
+
+Issues and Pull Requests are welcome! Please follow these guidelines:
+
+### Submitting Issues
+
+-   Before submitting a new issue, please search for existing similar issues
+-   Clearly describe the problem, reproduction steps, and browser type/version
+-   If there are error messages, please include the full console error output
+
+### Submitting Pull Requests
+
+1.  Fork this repository and create a feature branch: `git checkout -b feature/your-feature`
+2.  Follow the existing coding style: vanilla ES6+ JavaScript, modular design, Chinese comments
+3.  If adding new UI text, add corresponding translation keys to both `locales/zh-CN.js` and `locales/en-US.js`
+4.  If adding features that change the user data structure, add backward-compatible migration logic in `loadUsers()`
+5.  Test in mainstream browsers (Chrome, Firefox, Edge) before submitting
+6.  In the PR description, explain the changes, testing performed, and whether there are breaking changes
+
+### Coding Standards
+
+-   JavaScript: ES6+ syntax, class-based OOP design, camelCase method names
+-   CSS: Use CSS variables for theme colors, BEM-like naming convention
+-   HTML: Semantic tags, all translatable text must have `data-i18n` attributes
+-   Comments: Add Chinese comments for core logic; functions should document parameters and return values
+
+---
+
+## License
+
+This project is open-sourced under the [MIT License](file:///c:/Users/Administrator/Documents/trae_projects/Stock%20simulator/LICENSE). You are free to use, modify, and distribute it.
+
+Copyright (c) 2026 MOX
+
+---
+
+**Version**: v2.4.0
 **Developer**: Moke Xintu (Bilibili)
 
 ## Star History

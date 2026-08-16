@@ -65,21 +65,37 @@ const AchievementSystem = {
         { id: 'news_trader', name: '消息派', desc: '在"利好消息"后买入并盈利', level: 'bronze', icon: '📰', condition: (stats) => stats.newsTrades >= 1 },
         { id: 'early_bird', name: '早起的鸟儿', desc: '在开盘前5分钟完成交易', level: 'bronze', icon: '🐦', condition: (stats) => stats.earlyTrades >= 1 },
         { id: 'night_owl', name: '夜猫子', desc: '在收盘前5分钟完成交易', level: 'bronze', icon: '🦉', condition: (stats) => stats.lateTrades >= 1 },
-        
-        // 贷款玩法成就（需在存档创建时启用贷款功能才会生效）
-        { id: 'deadbeat', name: '老赖', desc: '还款日未及时还债', level: 'silver', icon: '🧾', feature: 'loan', condition: (stats) => stats.missedPayment },
-        { id: 'debt_evaporated', name: '债务蒸发', desc: '持有某银行贷款负债，该银行股当日跌停并触发破产清算', level: 'legend', icon: '💸', feature: 'loan', condition: (stats) => stats.debtEvaporated },
     ],
 
-    // 获取成就等级名称
+    // 获取成就等级名称（支持国际化）
     getLevelName(level) {
-        const names = {
-            bronze: '青铜',
-            silver: '白银',
-            gold: '黄金',
-            legend: '传说'
+        const keyMap = {
+            bronze: 'profile.levelBronze',
+            silver: 'profile.levelSilver',
+            gold: 'profile.levelGold',
+            legend: 'profile.levelLegend'
         };
-        return names[level] || level;
+        const key = keyMap[level];
+        if (key && window.I18n) {
+            return I18n.t(key);
+        }
+        return level;
+    },
+
+    // 获取成就名称（支持国际化）
+    getName(ach) {
+        if (window.I18n) {
+            return I18n.t(`achievement.${ach.id}.name`);
+        }
+        return ach.name;
+    },
+
+    // 获取成就描述（支持国际化）
+    getDesc(ach) {
+        if (window.I18n) {
+            return I18n.t(`achievement.${ach.id}.desc`);
+        }
+        return ach.desc;
     },
 
     // 获取成就等级颜色
@@ -93,15 +109,10 @@ const AchievementSystem = {
         return colors[level] || '#888';
     },
 
-    // 获取可见成就（按启用的玩法功能过滤，feature 为空的成就始终可见）
-    getVisibleAchievements(enabledFeatures = []) {
-        return this.achievements.filter(a => !a.feature || enabledFeatures.includes(a.feature));
-    },
-
     // 检查成就解锁
-    checkAchievements(stats, unlockedIds, enabledFeatures = []) {
+    checkAchievements(stats, unlockedIds) {
         const newAchievements = [];
-        this.getVisibleAchievements(enabledFeatures).forEach(ach => {
+        this.achievements.forEach(ach => {
             if (!unlockedIds.includes(ach.id) && ach.condition(stats)) {
                 newAchievements.push(ach);
             }
@@ -134,16 +145,16 @@ const AchievementSystem = {
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 48px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('🏆 成就解锁', 300, 100);
-        
+        ctx.fillText('🏆 ' + (window.I18n ? I18n.t('achievement.unlocked') : '成就解锁'), 300, 100);
+
         // 成就图标
         ctx.font = '120px Arial';
         ctx.fillText(achievement.icon, 300, 280);
-        
+
         // 成就名称
         ctx.fillStyle = this.getLevelColor(achievement.level);
         ctx.font = 'bold 42px Arial';
-        ctx.fillText(achievement.name, 300, 380);
+        ctx.fillText(this.getName(achievement), 300, 380);
         
         // 等级标签
         ctx.fillStyle = 'rgba(255,255,255,0.2)';
@@ -155,20 +166,21 @@ const AchievementSystem = {
         // 描述
         ctx.fillStyle = '#aaaaaa';
         ctx.font = '28px Arial';
-        ctx.fillText(achievement.desc, 300, 520);
-        
+        ctx.fillText(this.getDesc(achievement), 300, 520);
+
         // 用户名
         ctx.fillStyle = '#58a6ff';
         ctx.font = '32px Arial';
         ctx.fillText(`@${username}`, 300, 620);
-        
+
         // 底部
         ctx.fillStyle = '#666666';
         ctx.font = '20px Arial';
-        ctx.fillText('股市模拟器 - 纯娱乐版', 300, 720);
-        
-        // 日期
-        const date = new Date().toLocaleDateString('zh-CN');
+        ctx.fillText(window.I18n ? I18n.t('app.title') : '股市模拟器 - 纯娱乐版', 300, 720);
+
+        // 日期（使用当前语言区域格式）
+        const locale = window.I18n ? I18n.getCurrentLanguage() : 'zh-CN';
+        const date = new Date().toLocaleDateString(locale);
         ctx.fillText(date, 300, 750);
         
         return canvas.toDataURL('image/png');

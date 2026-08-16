@@ -1,8 +1,14 @@
+<p align="right">
+  <a href="README_EN.md">
+    <img src="https://img.shields.io/badge/Language-English-blue?style=for-the-badge" alt="English README" />
+  </a>
+</p>
+
 # 股市模拟器
 
 一个纯娱乐、零压力的 A 股模拟炒股平台。所有数据均在浏览器本地生成与存储，不连接任何真实行情接口，用户可在无资金风险的环境中学习股票交易规则、体验市场波动并测试自己的交易策略。
 
-> 版本：v2.3.0
+> 版本：v2.4.0
 > 开发者：莫客星图（Bilibili）
 
 ---
@@ -10,7 +16,8 @@
   <a href="https://www.bilibili.com/video/BV1sWNwzVEek/" target="_blank">
     <img src="./images/cover.jpg" width="600" alt="全新股票模拟器演示视频">
   </a>
-  <p>🎬 <b><a href="https://www.bilibili.com/video/BV1sWNwzVEek/" target="_blank">点击此处前往Bilibili观看完整演示视频</a></b></p>
+  <p>📺 <b><a href="https://www.bilibili.com/video/BV1sWNwzVEek/" target="_blank">点击此处在 Bilibili 上观看完整演示视频。</a></b></p>
+  <p>▶️ <b><a href="https://youtu.be/SESTTuLqTi4?si=GlUPLyUWA1FDomzB" target="_blank">点击此处在 YouTube 上观看完整的演示视频。</a></b></p>
 </div>
 
 ---
@@ -33,12 +40,15 @@
   - [K 线图表系统](#k-线图表系统)
   - [调试面板](#调试面板)
   - [主题与界面](#主题与界面)
+  - [国际化系统（i18n）](#国际化系统i18n)
   - [新手教程](#新手教程)
   - [数据安全与备份](#数据安全与备份)
 - [交易规则](#交易规则)
 - [界面导览](#界面导览)
 - [常见问题](#常见问题)
 - [开发者说明](#开发者说明)
+- [贡献规范](#贡献规范)
+- [许可证](#许可证)
 - [未来计划](#未来计划)
 - [Star历史](#Star历史)
 
@@ -77,6 +87,7 @@
 - **时间控制系统**：模拟市场交易时间，支持手动调整、预设时间、随机时间
 - **调试面板**：隐藏的开发者面板，可修改资金、解锁成就、控制时间、重置行情
 - **多主题支持**：深色、浅色、节日限定三套主题
+- **中英文双语切换**：内置完整的国际化（i18n）系统，支持一键切换中英文界面，语言偏好自动保存
 - **新手教程**：9 步引导式教程，首次进入游戏自动触发
 - **存档导入导出**：支持将用户数据加密导出为文件，跨设备迁移
 - **响应式设计**：适配桌面端与移动端
@@ -101,15 +112,22 @@
 
 ```
 Stock simulator/
-├── index.html        # 主页面，包含所有界面结构（715 行）
-├── game.js           # 核心游戏逻辑（5300+ 行）
-│   ├── LimitManager 类      # 涨跌停与熔断管理
-│   └── StockSimulator 类    # 主控制器，包含全部业务逻辑
-├── stockData.js      # A 股股票池数据（300+ 只股票，443 行）
-├── achievements.js   # 成就系统配置与逻辑（233 行）
-├── crypto.js         # 加密工具（XOR + Base64 + 哈希 + UUID，65 行）
-├── styles.css        # 全部样式（含三套主题，3252 行）
-└── README.html       # HTML 版使用指南
+├── index.html              # 主页面，包含所有界面结构
+├── game.js                 # 核心游戏逻辑（5200+ 行）
+│   ├── LimitManager 类           # 涨跌停与熔断管理
+│   └── StockSimulator 类         # 主控制器，包含全部业务逻辑
+├── stockData.js            # A 股股票池数据（300+ 只股票）
+├── achievements.js         # 成就系统配置与逻辑
+├── crypto.js               # 加密工具（XOR + Base64 + 哈希 + UUID）
+├── i18n.js                 # 国际化核心模块（I18nManager 类）
+├── locales/                # 语言资源文件目录
+│   ├── zh-CN.js            # 中文语言资源（512 条翻译）
+│   └── en-US.js            # 英文语言资源（512 条翻译）
+├── styles.css              # 全部样式（含三套主题 + 语言切换 UI）
+├── images/                 # 项目图片资源
+│   ├── cover.jpg           # 中文版封面图
+│   └── cover-en.png        # 英文版封面图
+└── LICENSE                 # MIT 开源许可证
 ```
 
 ### 文件加载顺序
@@ -120,7 +138,10 @@ Stock simulator/
 <script src="stockData.js"></script>     <!-- 全局变量 StockPool -->
 <script src="crypto.js"></script>        <!-- 全局对象 Crypto -->
 <script src="achievements.js"></script>  <!-- 全局对象 AchievementSystem -->
-<script src="game.js"></script>          <!-- 主程序，依赖上述三者 -->
+<script src="locales/zh-CN.js"></script> <!-- 全局对象 ZH_CN（中文资源） -->
+<script src="locales/en-US.js"></script> <!-- 全局对象 EN_US（英文资源） -->
+<script src="i18n.js"></script>          <!-- 全局对象 I18n（国际化实例） -->
+<script src="game.js"></script>          <!-- 主程序，依赖上述全部 -->
 ```
 
 ---
@@ -164,7 +185,8 @@ Stock simulator/
   achievements: Array,           // 用户级成就（跨存档）
   tutorialCompleted: Boolean,    // 是否完成教程
   theme: 'dark' | 'light' | 'festival',  // 主题偏好
-  refreshRate: Number            // 行情刷新速度（毫秒）
+  refreshRate: Number,           // 行情刷新速度（毫秒）
+  lang: 'zh-CN' | 'en-US'        // 语言偏好（国际化）
 }
 ```
 
@@ -175,7 +197,7 @@ Stock simulator/
 - 自动登录：登录成功后记录最近用户，下次打开自动登录
 - 修改密码：需验证当前密码，新密码需二次确认
 - 注销账户：需输入 `DELETE` 确认，操作不可恢复
-- 数据迁移：旧用户数据在加载时自动补齐缺失字段（`tutorialCompleted`、`theme`、`refreshRate`）
+- 数据迁移：旧用户数据在加载时自动补齐缺失字段（`tutorialCompleted`、`theme`、`refreshRate`、`lang`）
 
 ### 存档系统
 
@@ -449,6 +471,43 @@ chartState = {
 
 **响应式**：通过 viewport meta 与 CSS 媒体查询适配不同屏幕尺寸，移动端支持触摸操作。
 
+### 国际化系统（i18n）
+
+项目内置完整的中英文国际化系统，由 [i18n.js](file:///c:/Users/Administrator/Documents/trae_projects/Stock%20simulator/i18n.js) 中的 `I18nManager` 类实现，语言资源存放于 [locales/](file:///c:/Users/Administrator/Documents/trae_projects/Stock%20simulator/locales/) 目录。
+
+**核心机制**：
+
+- **翻译函数**：`I18n.t(key, params)` 通过键名获取翻译文本，支持 `{placeholder}` 参数插值
+- **DOM 自动刷新**：`I18n.applyToDOM()` 批量更新所有标记了 `data-i18n` / `data-i18n-placeholder` / `data-i18n-title` / `data-i18n-html` 属性的节点
+- **即时切换**：调用 `I18n.setLanguage(lang)` 或 `I18n.toggleLanguage()` 即时切换语言并刷新全页
+- **回调通知**：`I18n.onChange(callback)` 注册语言变更回调，供动态内容重新渲染
+
+**DOM 标记约定**：
+
+| 属性 | 作用 |
+| --- | --- |
+| `data-i18n="key"` | 设置元素的 `textContent` |
+| `data-i18n-placeholder="key"` | 设置输入框的 `placeholder` |
+| `data-i18n-title="key"` | 设置元素的 `title` |
+| `data-i18n-html="key"` | 设置元素的 `innerHTML`（用于含 HTML 标签的文本） |
+
+**语言切换 UI**：
+
+- 登录页右上角 🌐 圆形按钮：单击即可在中英文间快速切换
+- 设置面板语言下拉框：可选择「中文」或「English」
+
+**语言偏好持久化**：
+
+- 已登录用户：语言偏好保存在用户数据的 `lang` 字段，登录时自动恢复
+- 未登录用户：语言偏好保存在 LocalStorage（键名 `stock_simulator_lang`）
+- 回退机制：找不到翻译键时自动回退到中文
+
+**本地化适配**：
+
+- 金额格式化：中文使用「万/亿」单位，英文使用「K/M/B」单位
+- 日期格式化：使用 `toLocaleString()` 根据当前语言区域格式化
+- 成就系统：成就名称与描述均支持双语切换
+
 ### 新手教程
 
 首次进入游戏的用户会自动触发 9 步引导教程，覆盖以下内容：
@@ -540,6 +599,7 @@ chartState = {
 
 - 登录表单：用户名、密码，支持回车登录
 - 注册表单：用户名、密码、确认密码，支持回车在输入框间切换
+- 语言切换：右上角 🌐 按钮，一键切换中英文
 - 错误提示：实时显示登录/注册错误
 
 ### 存档选择界面（save-select-screen）
@@ -593,7 +653,7 @@ chartState = {
 
 ### 弹窗与面板
 
-- 设置面板：主题切换、行情刷新速度
+- 设置面板：主题切换、行情刷新速度、语言选择
 - 密码修改面板：当前密码、新密码、确认新密码
 - 调试面板：资金修改、成就解锁、时间控制、行情控制
 - 成就弹窗：新成就解锁通知
@@ -646,6 +706,15 @@ chartState = {
 
 代码 `999999` 的「影视飓风」是项目内置的彩蛋股票，具有 70% 上涨概率的特殊行情算法，表现优于普通股票。
 
+### 如何切换中英文界面？
+
+有两种方式切换语言：
+
+- 在登录页面点击右上角的 🌐 按钮快速切换
+- 进入游戏后在「设置」面板中的「语言」下拉框中选择
+
+语言偏好会自动保存，下次打开时自动应用上次选择的语言。
+
 ---
 
 ## 开发者说明
@@ -672,6 +741,7 @@ chartState = {
 | 自动交易 | `addAutoTradeStock`、`editAutoTradeStock`、`removeAutoTradeStock`、`startAutoTrade`、`pauseAutoTrade`、`stopAutoTrade`、`checkAutoTradeCondition`、`executeAutoTrade` |
 | 调试面板 | `showDebugPanel`、`debugSetTime`、`debugSetFund`、`debugUnlockAchievement`、`debugResetMarket` |
 | 教程系统 | `startTutorial`、`showTutorialStep`、`nextTutorial`、`endTutorial` |
+| 国际化 | `applyUserLanguage`、`onLanguageChanged`、`toggleLanguage` |
 | 工具方法 | `formatMoney`、`showScreen`、`switchTab`、`setTheme`、`exportSave`、`importSave` |
 
 ### 启动流程
@@ -681,8 +751,9 @@ chartState = {
 1. `DOMContentLoaded` 事件触发
 2. 全局禁用右键菜单
 3. 实例化 `StockSimulator`，构造函数中调用 `init()`
-4. `init()` 依次调用 `loadUsers()`（加载数据并执行迁移）、`bindEvents()`（绑定所有事件）、`checkAutoLogin()`（尝试自动登录）
-5. 注册 `popstate` 事件处理浏览器后退
+4. `init()` 依次调用 `I18n.init()`（初始化国际化）、`I18n.applyToDOM()`（刷新静态文本）、`loadUsers()`（加载数据并执行迁移）、`bindEvents()`（绑定所有事件）、`applyUserLanguage()`（应用用户语言偏好）、`checkAutoLogin()`（尝试自动登录）
+5. 注册 `I18n.onChange()` 回调，语言切换时自动刷新所有动态内容
+6. 注册 `popstate` 事件处理浏览器后退
 
 ### 数据流
 
@@ -706,6 +777,14 @@ chartState = {
 
 **添加新主题**：在 [styles.css](file:///c:/Users/Administrator/Documents/trae_projects/Stock%20simulator/styles.css) 中新增 `body.{主题名}-theme` 选择器并覆盖 CSS 变量，同时在 `index.html` 主题下拉框与 `game.js` 的 `setTheme()` 方法中补充对应分支。
 
+**添加新语言或翻译**：
+
+1. 在 [locales/](file:///c:/Users/Administrator/Documents/trae_projects/Stock%20simulator/locales/) 目录下新建语言资源文件（如 `ja-JP.js`），导出全局对象（如 `window.JA_JP`），键名结构与 `zh-CN.js` 保持一致
+2. 在 [i18n.js](file:///c:/Users/Administrator/Documents/trae_projects/Stock%20simulator/i18n.js) 的 `locales` 对象中注册新语言
+3. 在 [index.html](file:///c:/Users/Administrator/Documents/trae_projects/Stock%20simulator/index.html) 中添加对应的 `<script>` 标签和语言下拉选项
+4. 为新增的 UI 文本添加 `data-i18n` 属性，并在两个语言资源文件中补充对应键值
+5. 动态生成的文本使用 `I18n.t('key')` 替代硬编码字符串
+
 ---
 
 ## 未来计划
@@ -715,7 +794,9 @@ chartState = {
 - [ ] 添加多人对战功能
 - [x] 增加更多成就类型（已实现 50+ 项）
 - [x] 优化用户界面
-- [ ] 添加教程模式（已实现基础版新手引导）
+- [x] 添加教程模式（已实现基础版新手引导）
+- [x] 中英文双语切换（已实现完整 i18n 系统）
+- [ ] 支持更多语言（日文、韩文等）
 
 ---
 
@@ -727,7 +808,43 @@ chartState = {
 
 ---
 
-**版本信息**：v2.3.0
+## 贡献规范
+
+欢迎对本项目提交 Issue 和 Pull Request！请遵循以下规范：
+
+### 提交 Issue
+
+- 在提交新 Issue 前，请先搜索是否已有类似问题
+- 请清晰描述问题现象、复现步骤、浏览器类型与版本
+- 如有报错信息，请附上浏览器控制台的完整错误输出
+
+### 提交 Pull Request
+
+1. Fork 本仓库并创建特性分支：`git checkout -b feature/your-feature`
+2. 遵循项目现有编码风格：原生 ES6+ JavaScript，模块化设计，中文注释
+3. 如新增 UI 文本，须同时在 `locales/zh-CN.js` 和 `locales/en-US.js` 中添加对应翻译键
+4. 如新增功能涉及用户数据结构变更，须在 `loadUsers()` 中添加向后兼容的数据迁移逻辑
+5. 提交前请确保在主流浏览器（Chrome、Firefox、Edge）中测试通过
+6. PR 描述中请说明改动内容、测试情况及是否涉及破坏性变更
+
+### 编码规范
+
+- JavaScript：ES6+ 语法，Class 面向对象设计，方法名使用驼峰命名
+- CSS：使用 CSS 变量管理主题色，BEM-like 命名风格
+- HTML：语义化标签，所有可翻译文本须添加 `data-i18n` 属性
+- 注释：核心逻辑添加中文注释说明，函数需标注参数与返回值
+
+---
+
+## 许可证
+
+本项目基于 [MIT License](file:///c:/Users/Administrator/Documents/trae_projects/Stock%20simulator/LICENSE) 开源，欢迎自由使用、修改和分发。
+
+Copyright (c) 2026 MOX
+
+---
+
+**版本信息**：v2.4.0
 **开发人员**：莫客星图
 
 ## Star历史
